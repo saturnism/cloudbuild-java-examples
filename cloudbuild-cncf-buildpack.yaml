@@ -1,3 +1,6 @@
+# Based on Knative CNCF Buildpack build template
+# https://github.com/knative/build-templates/tree/master/buildpacks
+
 substitutions:
   _CACHE: "true"
   _IMAGE: gcr.io/wise-coyote-827/demo
