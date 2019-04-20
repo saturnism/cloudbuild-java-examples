@@ -1,8 +1,6 @@
-# Based on Knative CNCF Buildpack build template
-# https://github.com/knative/build-templates/tree/master/buildpacks
-
 substitutions:
   _CACHE: "true"
+  _BUILD_CACHE_BUCKET: gs://wise-coyote-827/build-cache
   _IMAGE: gcr.io/wise-coyote-827/demo
   _RUN_IMAGE: packs/run:rc
   _BUILDER_IMAGE: packs/samples:rc
@@ -11,13 +9,36 @@ substitutions:
   _GROUP_ID: "1000"
 
 steps:
-- id: layers-cache
+- id: restore-m2-cache
   name: gcr.io/cloud-builders/gsutil
   waitFor: ['-']
   entrypoint: bash
+  dir: /home/pack
   args:
   - -c
-  - (mkdir -p /layers && ${_CACHE} && gsutil -q -m rsync -d -r gs://wise-coyote-827/build-cache/layers /layers || echo "no cache found")
+  - |
+    (
+      mkdir -p .m2 && ${_CACHE} &&
+      gsutil cp ${_BUILD_CACHE_BUCKET}/m2.tgz /tmp/m2.tgz &&
+      tar xzf /tmp/m2.tgz
+    ) || echo "no cache found"
+  volumes: 
+  - name: user.home
+    path: /home/pack
+
+- id: restore-layers-cache
+  name: gcr.io/cloud-builders/gsutil
+  waitFor: ['-']
+  entrypoint: bash
+  dir: /
+  args:
+  - -c
+  - |
+    (
+      mkdir -p /layers && ${_CACHE} &&
+      gsutil cp ${_BUILD_CACHE_BUCKET}/layers.tgz /tmp/layers.tgz &&
+      tar xzf /tmp/layers.tgz 
+    ) || echo "no cache found"
   volumes:
   - name: layers
     path: /layers
@@ -25,10 +46,16 @@ steps:
 - id: prepare
   name: alpine
   entrypoint: /bin/sh
-  waitFor: ['layers-cache']
+  waitFor: ['restore-layers-cache','restore-m2-cache']
   args:
   - -c
-  - (chown -R "${_USER_ID}:${_GROUP_ID}" "/builder/home" && chown -R "${_USER_ID}:${_GROUP_ID}" /layers && chown -R "${_USER_ID}:${_GROUP_ID}" /workspace)
+  - |
+    (
+      chown -R "${_USER_ID}:${_GROUP_ID}" /builder/home &&
+      chown -R "${_USER_ID}:${_GROUP_ID}" /layers &&
+      chown -R "${_USER_ID}:${_GROUP_ID}" /workspace &&
+      chown -R "${_USER_ID}:${_GROUP_ID}" /home/pack/.m2
+    )
   volumes:
   - name: layers
     path: /layers
@@ -96,12 +123,35 @@ steps:
   - name: user.home
     path: /home/pack
 
-- name: gcr.io/cloud-builders/gsutil
+- id: update-m2-cache
+  name: gcr.io/cloud-builders/gsutil
+  waitFor: ['build']
+  entrypoint: bash
+  dir: /home/pack
+  args:
+  - -c
+  - |
+    (
+      ${_CACHE} &&
+      tar czf /tmp/m2.tgz .m2 &&
+      gsutil cp /tmp/m2.tgz ${_BUILD_CACHE_BUCKET}/m2.tgz
+    ) || echo "unable to update cache"
+  volumes:
+  - name: user.home
+    path: /home/pack
+
+- id: update-layers-cache
+  name: gcr.io/cloud-builders/gsutil
   waitFor: ['build']
   entrypoint: bash
   args:
   - -c
-  - (${_CACHE} && gsutil -q -m rsync -d -r /layers gs://wise-coyote-827/build-cache/layers || echo "unable to store cache")
+  - |
+    (
+      ${_CACHE} &&
+      tar czf /tmp/layers.tgz /layers &&
+      gsutil cp /tmp/layers.tgz ${_BUILD_CACHE_BUCKET}/layers.tgz
+    ) || echo "unable to update cache"
   volumes:
   - name: layers
     path: /layers
