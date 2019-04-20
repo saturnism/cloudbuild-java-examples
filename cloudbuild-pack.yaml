@@ -1,0 +1,13 @@
+substitutions:
+  _IMAGE: gcr.io/wise-coyote-827/demo
+
+steps:
+- id: build
+  name: saturnism/pack
+  args:
+  - build
+  - --builder
+  - cloudfoundry/cnb:cflinuxfs3
+  - --publish
+  - ${_IMAGE}
+
