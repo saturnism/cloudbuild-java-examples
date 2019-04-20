@@ -24,6 +24,9 @@ steps:
   name: gcr.io/cloud-builders/mvn
   waitFor: ['restore-m2-cache']
   args: ['package']
+  volumes:
+  - name: user.home
+    path: /root
 
 - id: update-m2-cache
   name: gcr.io/cloud-builders/gsutil
